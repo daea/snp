@@ -5,6 +5,7 @@ import csv, re
 import vcf
 from Bio.Seq import MutableSeq, Seq as MutableSeq, Seq
 import pprint as pp
+import textwrap
 
 ''' For a gene with a given .vcf, and a reference .gff, this will create.
 - full length CDS
@@ -14,8 +15,19 @@ import pprint as pp
 - AGI ID
 - protein coding region (exons spliced out based on gff annotation)
 - dictionary of snps
-- 
 ''' 
+
+def mutate(sequence, site, mutation):
+	try:
+		old = list(sequence)
+	except TypeError:	
+		print "Input sequence should be a string or list"
+	old[site-1] = mutation
+	return old	
+
+def codon(sequence, frame=0):
+	return textwrap.wrap(sequence[frame:], 3)	
+
 
 
 class Snp:
@@ -40,13 +52,15 @@ class Snp:
 				self.first_site = record.POS	#	Find First	
 		
 			self.fullsites.append(record.REF[0]) #	Make Reference Sequence
-			if record.REF not in ['A','T','C', 'G']:
-				print 'Site: {0}, Base: {1}'.format(record.POS, record.REF)
+		#	if record.REF not in ['A','T','C', 'G']:
+		#		print 'Site: {0}, Base: {1}'.format(record.POS, record.REF)
 			if record.is_snp == True:
-				self.snpsites.append([record.POS,record.ALT, record.aaf]) #	Make SNP Sequence
+				self.snpsites.append(
+					[record.POS, record.REF, record.ALT, record.aaf]
+				) #	Make SNP Sequence
 				 	
 		self.ref_seq = str(''.join(self.fullsites))	
-		print "Length of self.ref_seq: {0}".format(len(self.ref_seq))
+		#print "Length of self.ref_seq: {0}".format(len(self.ref_seq))
 	
 	def find_exons(self, DNA_sequence, gff):
 		''' Pull annotation from GFF files. For a given AGI_ID '''
@@ -54,26 +68,49 @@ class Snp:
 		self.exons = {}
 		
 		with open(gff) as tsv:
-			# Go through the gff file, go to the gene we care about, grab the coding sequences (CDS), splice the introns. 
 			for line in csv.reader(tsv, delimiter="\t"): 
 				if self.AGI in line[8] and line[2] == 'CDS':
 					exon = re.search(r'CDS:(\d+)', line[8])
 					try:
-						# GFF files have sites have first sites as 1, so + 1, for the second site as it will be one less than it should be in the self.ref_seq
-						self.exons[int(exon.group(1))] = MutableSeq(self.ref_seq[int(line[3]) - self.first_site: int(line[4]) - self.first_site + 1])
+						self.exons[int(exon.group(1))] = MutableSeq(
+							self.ref_seq[int(line[3]) - 
+							self.first_site: int(line[4]) - 
+							self.first_site + 1]
+						)
 					except IndexError:
 						continue			
 
 			for i in self.exons.keys():
-				print self.exons[i],":", i ,"\n", len(self.exons[i])
+		#		print self.exons[i],":", i ,"\n", len(self.exons[i])
 				concat = concat + self.exons[i]
 			self.protein_coding = concat
 				
-	def polymorphisms(self, which = 'all'):
-		''' Get index errors here : (. '''
-		self.variants = {}
-		for snp in self.snpsites:
-			print snp	
+	def polymorphisms(self):
+		self.polymorphs = {}
+		codons = codon(str(self.protein_coding))		
+		for i in self.snpsites:
+			try:
+				print ("S: {0}, B: {2}, C: {3}, CB: {4}, R: {5}".format( 
+					i[0],
+					self.first_site,
+					i[0] - self.first_site + 1,
+					((i[0] - self.first_site + 1) / 3) + 1,  
+					(i[0] - self.first_site + 1) % 3,
+					MutableSeq(codons[(i[0] - self.first_site + 1)/3]).translate()
+					)
+				)
+			except IndexError:
+				continue
+
+			self.polymorphs = {
+				i[0] : {
+					"site" : i[0],
+					"reference" : i[1],
+					"alt" : i[2],
+					"freq": i[3]
+				}
+			}				
+		
 				
 	#Access Functions
 	def get_DNAseq(self):
@@ -102,20 +139,14 @@ gff = 'Araport11_GFF3_genes_transposons.201606.gff.txt'
 vcf_file = 'AT4G34000.1.vcf'
 test = Snp(vcf_file, gff)
 sites = test.polymorphisms()
-print test.ref_seq
 
 
-print "\n\n\n", test.get_protein_seq()
 
-def mutate(sequence, site, mutation):
-	try:
-		old = list(sequence)
-	except TypeError:	
-		print "Input sequence should be a string"
-	old[site-1] = mutation
-	return old	
+#test_seq = 'ctttttcactttcttgcttgacaggcttatacgatggaactggaagcagaaattgcgcaactcaaagaattgaatgaagagttgcagaagaaacaagtgtgtctcgcttcttccctatcacaattaagaatctcgagattttcatattttcttgaggttgtattcactgaccaaatgtttcatgcaggttgaaatcatggaaaagcagaaaaatcaggtactgtcttgatttgaatatcctctatggttgttggctaggcttttaactctcactcataatgaattacacttttggacagtattctaagcttttgagtagaatagtgtaagctataccatgaagtgagacatatcatcacatttttgatttcccactctgcataaagtatttaagatttgtgaatatgttgcaatgccaatttggatatttcatgagactaatctgacgagcatggatttaacggaagttggctcatttgttgttgcagcttctggagcctctgcgccagccatggggaatgggatgcaaaaggcaatgcttgcgaaggacattgacgggtccctggtagagcttataatggcgtctaaggaacccaacaaagcgccgaagttatagaacaactcagaagatagaaagctagctttgtacgtagtttaggcaggttctgtgggtgattgtaaatcttgaagtgtggcggatttgacagagatagataaacacatatctgttctattttcctaaatcttttggttttatcttcctgatgtaatggatctttatcatttgtcttgaacatctttgtgacttaaccagagtgaatttatcttgtatcttgtctgcaattttttctttagctcatttgggcccaagtcaacacctttaaa'
 
-print mutate('atcg', 1, 'A')
+#mutate(test_seq, 1, 'A')
+#print codon(test_seq, 1)
+
 
 
 ################################################################################

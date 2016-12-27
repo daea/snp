@@ -1,11 +1,10 @@
 # Matt Cumming 2016 #
 # Provart Lab #
 
-import csv, re
-import vcf
+import csv, re, glob, sys, os, vcf, textwrap, dill
 from Bio.Seq import MutableSeq, Seq as MutableSeq, Seq
 import pprint as pp
-import textwrap
+import process_vcfs as pvcf
 
 ''' For a gene with a given .vcf, and a reference .gff, this will create.
 - full length CDS
@@ -14,8 +13,12 @@ import textwrap
 - last site
 - AGI ID
 - protein coding region (exons spliced out based on gff annotation)
-- dictionary of snps
+- dictionary of snpsites
+-dictionary containing affected codons for a particular site, and the amino acid translations (non-syn)
 ''' 
+
+
+# Helper Functions
 
 def mutate(sequence, site, mutation):
 	try:
@@ -25,43 +28,23 @@ def mutate(sequence, site, mutation):
 	old[site-1] = mutation
 	return old	
 
+
+
 def codon(sequence, frame=0):
 	return textwrap.wrap(sequence[frame:], 3)	
 
 
 
+
+# Snp Class
+
 class Snp:
 	def __init__(self, vcffile, gff):
-		self.AGI = vcffile[:-4]
-		print self.AGI	
-		self.read_vcf(vcffile)
+		self.AGI = os.path.basename(vcffile)[:-4]
+		self.fullsites, self.snpsites, self.first_site, self.last_site, self.ref_seq = pvcf.load_pickle(self.AGI, os.path.dirname(vcffile) + '/')
 		self.find_exons(self.ref_seq, gff)
+		self.polymorphisms()
 
-	def read_vcf(self, vcffile):
-		''' Gets the sequence from the vcf files and grabs the associated SNPs'''
-		self.fullsites = []
-		self.snpsites = [] 
-		self.first_site = 0
-		self.last_site = 0
-		gene = vcf.Reader(open(vcffile, 'r'))
-		
-		for record in gene:
-			if record.POS > self.last_site:	#	Find Last
-				self.last_site = record.POS
-			if self.first_site == 0:
-				self.first_site = record.POS	#	Find First	
-		
-			self.fullsites.append(record.REF[0]) #	Make Reference Sequence
-		#	if record.REF not in ['A','T','C', 'G']:
-		#		print 'Site: {0}, Base: {1}'.format(record.POS, record.REF)
-			if record.is_snp == True:
-				self.snpsites.append(
-					[record.POS, record.REF, record.ALT, record.aaf]
-				) #	Make SNP Sequence
-				 	
-		self.ref_seq = str(''.join(self.fullsites))	
-		#print "Length of self.ref_seq: {0}".format(len(self.ref_seq))
-	
 	def find_exons(self, DNA_sequence, gff):
 		''' Pull annotation from GFF files. For a given AGI_ID '''
 		concat = MutableSeq('')
@@ -81,37 +64,42 @@ class Snp:
 						continue			
 
 			for i in self.exons.keys():
-		#		print self.exons[i],":", i ,"\n", len(self.exons[i])
 				concat = concat + self.exons[i]
 			self.protein_coding = concat
 				
+	def print_polymorphs(self):
+		print "{0} has the following polymorphic sites: \n".format(self.AGI)
+		for i in self.polymorphs.keys():
+			print "Site: {0}, Reference: {1}, Polymorphism: {2}, Non Synonymous?: {3}, Residue: {4}, Mutant: {5}".format(
+					self.polymorphs[i]["site"], 
+					self.polymorphs[i]["reference"],
+					self.polymorphs[i]["alt"], 
+					self.polymorphs[i]["non_syn"],	
+					self.polymorphs[i]["old_residue"], 
+					self.polymorphs[i]["new_residue"]
+			) 
+	
 	def polymorphisms(self):
 		self.polymorphs = {}
 		codons = codon(str(self.protein_coding))		
 		for i in self.snpsites:
 			try:
-				print ("S: {0}, B: {2}, C: {3}, CB: {4}, R: {5}".format( 
-					i[0],
-					self.first_site,
-					i[0] - self.first_site + 1,
-					((i[0] - self.first_site + 1) / 3) + 1,  
-					(i[0] - self.first_site + 1) % 3,
-					MutableSeq(codons[(i[0] - self.first_site + 1)/3]).translate()
-					)
-				)
+				site = i[0] - self.first_site + 1
+				codon_site = site % 3,
+				old_res = MutableSeq(codons[site/3]).translate()
+				new_res = MutableSeq("".join(mutate(codons[site/3], site%3, i[2]))).translate() 
+				self.polymorphs[i[0]] = {
+						"site" : i[0],
+						"reference" : i[1],
+						"alt" : i[2],
+						"freq": i[3],
+						"old_residue" : old_res,
+						"new_residue" : new_res,
+						"non_syn" : old_res == new_res
+					}
 			except IndexError:
 				continue
 
-			self.polymorphs = {
-				i[0] : {
-					"site" : i[0],
-					"reference" : i[1],
-					"alt" : i[2],
-					"freq": i[3]
-				}
-			}				
-		
-				
 	#Access Functions
 	def get_DNAseq(self):
 		return self.ref_seq[:]
@@ -134,30 +122,10 @@ class Snp:
 	def get_protein_seq(self):
 		return self.get_protein_coding().translate(cds = True)	
 
-
+###############################################################################
+	
 gff = 'Araport11_GFF3_genes_transposons.201606.gff.txt'
-vcf_file = 'AT4G34000.1.vcf'
-test = Snp(vcf_file, gff)
-sites = test.polymorphisms()
+directory = "./1001g_variants/"
+file_list, pickled = pvcf.get_files(directory)
 
-
-
-#test_seq = 'ctttttcactttcttgcttgacaggcttatacgatggaactggaagcagaaattgcgcaactcaaagaattgaatgaagagttgcagaagaaacaagtgtgtctcgcttcttccctatcacaattaagaatctcgagattttcatattttcttgaggttgtattcactgaccaaatgtttcatgcaggttgaaatcatggaaaagcagaaaaatcaggtactgtcttgatttgaatatcctctatggttgttggctaggcttttaactctcactcataatgaattacacttttggacagtattctaagcttttgagtagaatagtgtaagctataccatgaagtgagacatatcatcacatttttgatttcccactctgcataaagtatttaagatttgtgaatatgttgcaatgccaatttggatatttcatgagactaatctgacgagcatggatttaacggaagttggctcatttgttgttgcagcttctggagcctctgcgccagccatggggaatgggatgcaaaaggcaatgcttgcgaaggacattgacgggtccctggtagagcttataatggcgtctaaggaacccaacaaagcgccgaagttatagaacaactcagaagatagaaagctagctttgtacgtagtttaggcaggttctgtgggtgattgtaaatcttgaagtgtggcggatttgacagagatagataaacacatatctgttctattttcctaaatcttttggttttatcttcctgatgtaatggatctttatcatttgtcttgaacatctttgtgacttaaccagagtgaatttatcttgtatcttgtctgcaattttttctttagctcatttgggcccaagtcaacacctttaaa'
-
-#mutate(test_seq, 1, 'A')
-#print codon(test_seq, 1)
-
-
-
-################################################################################
-#Eventual Control Functions
-
-def make_genelist(filelist):
-	'''Create a list of Snp objects, from a list of vcf files'''
-	global gene_list
-	gene_list = {}
-	for file in filelist:
-		gene = vcf.Reader(open(file, 'r'))
-		gene_list = {file[:-4] : Snp(gene)}
-						
 

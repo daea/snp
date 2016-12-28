@@ -51,7 +51,7 @@ class Snp:
 		self.exons = {}
 		
 		with open(gff) as tsv:
-			for line in csv.reader(tsv, delimiter="\t"): 
+			for line in csv.reader(tsv): 
 				if self.AGI in line[8] and line[2] == 'CDS':
 					exon = re.search(r'CDS:(\d+)', line[8])
 					try:

@@ -1,3 +1,4 @@
 *.vcf
 /Araport11_GFF3_genes_transposons.201606.gff.txt
 *.pyc
+*.swp

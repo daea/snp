@@ -51,7 +51,6 @@ class Domains():
 				residue = k[0]
 				site = k[1:]	
 				domains[self.query_seq] = {i:[site, residue]}	
-				print domains	
 
 
 abf3 = r1001.Snp('./1001g_variants/AT4G34000.1.vcf', r1001.gff)

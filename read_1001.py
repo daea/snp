@@ -128,4 +128,3 @@ gff = 'Araport11_GFF3_genes_transposons.201606.gff.txt'
 directory = "./1001g_variants/"
 file_list, pickled = pvcf.get_files(directory)
 
-

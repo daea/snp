@@ -6,20 +6,22 @@ import handle_json
 import dpath.util
 import read_1001 as r1001
 import pycurl, cStringIO
+import process_vcfs as pvcf
 
-
-class Domains():
+class Annot():
 	
 	features = {}
-	domains = {}	
+	cdd = {}	
 
 	def __init__(self, seq):
-	
-		url = "http://bar.utoronto.ca/eplant/cgi-bin/CDDannot.cgi"
-		self.query_seq = seq
-		rawcdd = self.pull_cdd_bar(seq, url)		
-		self.read_cdd(handle_json.json_loads_byteified(rawcdd))
 		
+		self.pfamurl = 'http://bar.utoronto.ca/eplant/cgi-bin/PfamAnnot.cgi'	
+		self.cddurl =  'http://bar.utoronto.ca/eplant/cgi-bin/CDDannot.cgi'
+		self.query_seq = seq
+		self.rawcdd = self.pull_bar(self.query_seq, self.cddurl)
+		self.rawpfam = self.pull_bar(self.query_seq, self.pfamurl)		
+		self.cdd_sites = self.read_cdd(handle_json.json_loads_byteified(self.rawcdd))
+		#self.read_pfam(handle_json.json_loads_byteified(self.rawpfam))	
 
 
 	def decode_json(self, tata):
@@ -29,7 +31,7 @@ class Domains():
 
 
 
-	def pull_cdd_bar(self, seq, url):
+	def pull_bar(self, seq, url):
 		sequence = 'FASTAseq=' + seq 
 		
 		buf = cStringIO.StringIO()
@@ -43,6 +45,7 @@ class Domains():
 		return cheese
 
 
+
 	def read_cdd(self, decoded):
 		decoded_feat = {}
 		for i in decoded.keys():	
@@ -50,12 +53,17 @@ class Domains():
 			for k in decoded_feat[i]:
 				residue = k[0]
 				site = k[1:]	
-				domains[self.query_seq] = {i:[site, residue]}	
+				self.cdd[self.query_seq] = {i:[site, residue]}	
 
 
-abf3 = r1001.Snp('./1001g_variants/AT4G34000.1.vcf', r1001.gff)
-print abf3.get_protein_seq()
-abf3_feat = {}
-domains = {}
+for i in pvcf.get_files('./1001g_variants/'):
+	for k in i:
+		temp = r1001.Snp(k, r1001.gff)
+		temp_annot = Annot(str(temp.get_protein_seq())) 
+		print temp_annot.query_seq, temp_annot.cdd_sites, temp_annot.rawpfam
 
-Domains(str(abf3.get_protein_seq()))
+
+
+#abf3 = r1001.Snp('./1001g_variants/AT4G34000.1.vcf', r1001.gff)
+#Annot(str(abf3.get_protein_seq()))
+

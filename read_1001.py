@@ -57,20 +57,28 @@ class Snp:
 		for i in self.gff_records:
 			exonnum = float(i.attributes['ID'].split(':')[2])
 			try:
+				print i, i.start, i.end,
+				
+					
+				
+
 				self.exons[exonnum] = MutableSeq(
 				self.ref_seq[int(i.start) - 
 				self.first_site: int(i.end) - 
 				self.first_site + 1]
 				)
+				print self.exons[exonnum]
 			except IndexError:
 				print ''			
 	
 		print self.exons.keys()	
-		print float(self.exons.keys()).sort()	
-		#for i in self.exons.keys().sort():
-		#	concat = concat + self.exons[i]
-		#self.protein_coding = concat
-		#print concat	
+		exonls = [float(a) for a in self.exons.keys()]
+
+		for i in sorted(exonls):
+			print i
+			concat = concat + self.exons[i]
+		self.protein_coding = concat
+		print concat	
 
 
 
@@ -122,7 +130,7 @@ class Snp:
 		except:
 			print self.get_protein_coding()
 ###############################################################################
-gff = 'Araport11_GFF3_genes_transposons.201606.gff.gz'
+gff = 'Araport11_GFF3_genes_transposons.201606.gff'
 directory = "./1001g_variants/"
 file_list, pickled = pvcf.get_files(directory)
 

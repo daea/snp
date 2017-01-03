@@ -3,19 +3,9 @@
 
 import csv, re, glob, sys, os, vcf, textwrap, dill
 from Bio.Seq import MutableSeq, Seq as MutableSeq, Seq
-import pprint as pp
 import process_vcfs as pvcf
-
-''' For a gene with a given .vcf, and a reference .gff, this will create.
-- full length CDS
-- a list of potential SNPs
-- first site
-- last site
-- AGI ID
-- protein coding region (exons spliced out based on gff annotation)
-- dictionary of snpsites
--dictionary containing affected codons for a particular site, and the amino acid translations (non-syn)
-''' 
+import process_gff as pgff
+from collections import namedtuple
 
 
 # Helper Functions
@@ -35,50 +25,55 @@ def codon(sequence, frame=0):
 
 
 
-
 # Snp Class
 
 class Snp:
+
 	def __init__(self, vcffile, gff):
+		self.vcffile = vcffile
+		self.gfffile = gff
+		# Need to grab the AGI, currently using the filename
 		self.AGI = os.path.basename(vcffile)[:-4]
 		self.fullsites, self.snpsites, self.first_site, self.last_site, self.ref_seq = pvcf.load_pickle(self.AGI, os.path.dirname(vcffile) + '/')
 		self.find_exons(self.ref_seq, gff)
-		self.polymorphisms()
+		#self.polymorphisms()
+		
 
 	def find_exons(self, DNA_sequence, gff):
 		''' Pull annotation from GFF files. For a given AGI_ID '''
+
+		records = pgff.parseGFF3(self.gfffile)
 		concat = MutableSeq('')
 		self.exons = {}
+		self.gff_records = []	
+		for agi in records:
+			try:
+				if self.AGI == agi.attributes['Parent']: 
+					agi.attributes['Parent']
+					self.gff_records.append(agi)
+			except KeyError:
+				next
 		
-		with open(gff) as tsv:
-			for line in csv.reader(tsv): 
-				if self.AGI in line[8] and line[2] == 'CDS':
-					exon = re.search(r'CDS:(\d+)', line[8])
-					try:
-						self.exons[int(exon.group(1))] = MutableSeq(
-							self.ref_seq[int(line[3]) - 
-							self.first_site: int(line[4]) - 
-							self.first_site + 1]
-						)
-					except IndexError:
-						continue			
-
-			for i in self.exons.keys():
-				concat = concat + self.exons[i]
-			self.protein_coding = concat
-				
-	def print_polymorphs(self):
-		print "{0} has the following polymorphic sites: \n".format(self.AGI)
-		for i in self.polymorphs.keys():
-			print "Site: {0}, Reference: {1}, Polymorphism: {2}, Non Synonymous?: {3}, Residue: {4}, Mutant: {5}".format(
-					self.polymorphs[i]["site"], 
-					self.polymorphs[i]["reference"],
-					self.polymorphs[i]["alt"], 
-					self.polymorphs[i]["non_syn"],	
-					self.polymorphs[i]["old_residue"], 
-					self.polymorphs[i]["new_residue"]
-			) 
+		for i in self.gff_records:
+			exonnum = float(i.attributes['ID'].split(':')[2])
+			try:
+				self.exons[exonnum] = MutableSeq(
+				self.ref_seq[int(i.start) - 
+				self.first_site: int(i.end) - 
+				self.first_site + 1]
+				)
+			except IndexError:
+				print ''			
 	
+		print self.exons.keys()	
+		print float(self.exons.keys()).sort()	
+		#for i in self.exons.keys().sort():
+		#	concat = concat + self.exons[i]
+		#self.protein_coding = concat
+		#print concat	
+
+
+
 	def polymorphisms(self):
 		self.polymorphs = {}
 		codons = codon(str(self.protein_coding))		
@@ -100,6 +95,8 @@ class Snp:
 			except IndexError:
 				continue
 
+
+
 	#Access Functions
 	def get_DNAseq(self):
 		return self.ref_seq[:]
@@ -120,11 +117,13 @@ class Snp:
 		return self.protein_coding[:]
 
 	def get_protein_seq(self):
-		return self.get_protein_coding().translate(cds = True)	
-
+		try:
+			return self.get_protein_coding().translate(cds = True)	
+		except:
+			print self.get_protein_coding()
 ###############################################################################
-	
-gff = 'Araport11_gff.csv'
+gff = 'Araport11_GFF3_genes_transposons.201606.gff.gz'
 directory = "./1001g_variants/"
 file_list, pickled = pvcf.get_files(directory)
 
+Snp('./1001g_variants/AT1G45249.1.vcf' ,gff)

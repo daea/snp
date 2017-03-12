@@ -37,7 +37,7 @@ class Snp:
 		self.fullsites, self.snpsites, self.first_site, self.last_site, self.ref_seq = pvcf.load_pickle(self.AGI, os.path.dirname(vcffile) + '/')
 		self.find_exons(self.ref_seq, gff)
 		#self.polymorphisms()
-		
+		_join_records('CDS', self.AGI, self.ref_seq, self.first_site)	
 
 	def find_exons(self, DNA_sequence, gff):
 		''' Pull annotation from GFF files. For a given AGI_ID '''
@@ -53,35 +53,10 @@ class Snp:
 					self.gff_records.append(agi)
 			except KeyError:
 				next
-		
-		for i in self.gff_records:
-			exonnum = float(i.attributes['ID'].split(':')[2])
-			try:
-				print i, i.start, i.end,
-				
-					
-				
-
-				self.exons[exonnum] = MutableSeq(
-				self.ref_seq[int(i.start) - 
-				self.first_site: int(i.end) - 
-				self.first_site + 1]
-				)
-				print self.exons[exonnum]
-			except IndexError:
-				print ''			
 	
-		print self.exons.keys()	
-		exonls = [float(a) for a in self.exons.keys()]
-
-		for i in sorted(exonls):
-			print i
-			concat = concat + self.exons[i]
-		self.protein_coding = concat
-		print concat	
-
-
-
+		
+			
+	
 	def polymorphisms(self):
 		self.polymorphs = {}
 		codons = codon(str(self.protein_coding))		

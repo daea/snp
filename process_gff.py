@@ -15,6 +15,7 @@ from __future__ import with_statement
 from collections import namedtuple
 import gzip   # Matt: For decompression of .gz if encountered
 import urllib # Matt: For removal of %characters, replaces with single string equiv
+from Bio.Seq import MutableSeq, Seq as MutableSeq, Seq 
 
 __author__  = "Uli Koehler"   
 # Matt: Shamelessly stolen from techoverflow.net/blog/2013/11/30/parsing-gff3-in-python/
@@ -64,7 +65,7 @@ def parseGFF3(filename):
             #    yield normalizedInfo
             yield GFFRecord(**normalizedInfo)
             
-
+'''
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
@@ -83,3 +84,91 @@ if __name__ == "__main__":
         #Access attributes like this: my_strand = record.strand
         recordCount += 1
     print "Total records: %d" % recordCount
+'''
+
+def slice_ref_seq(sequence, start, end, phase, locus):
+	a = MutableSeq(
+		sequence[
+			int(start) - int(locus) + int(phase) - 1:
+			int(end) - int(locus) 		
+			]
+		)
+	print int(start), int(phase), int(end),
+	print int(start) - int(locus) + int(phase), int(end) - int(locus)
+	return a
+
+
+def _join_records(recordtype, splice_variant, sequence, locus='null'):
+	''' Takes a list of gff records as input, joins them in the correct orientation.'''
+	
+	records = retrieve_gff_records(recordtype, splice_variant)
+	print records
+	feats = []
+	concat = ''
+
+	# First see how many records we recovered
+	# If one, just return whatever it slices	
+	if len(records) <= 1:
+		# If a locus isn't specified just slice from the beginning 
+	
+		if locus == 'null':
+			locus = int(records[0].start)
+		if records[0].strand == '+':	
+			feats.append(slice_ref_seq(sequence, records[0].start, records[0].end, record[0].phase, locus))	
+		
+		elif records[0].strand == '-':
+			feats.append(slice_ref_seq(sequence, records[0].start, records[0].end, record[0].phase, locus).reverse_complement())	
+			
+	else:
+		if locus == 'null':
+			print "please specify a starting locus"
+		else:	
+			for feature in records:
+				exonnum = float(feature.attributes['ID'].split(':')[2])
+				if feature.strand == '-':
+					try:
+						feats.append(slice_ref_seq(sequence, feature.start, feature.end, feature.phase, locus).reverse_complement())
+					except IndexError:
+						feature.attributes['ID']
+				
+				elif feature.strand == '+':
+					try:	
+						feats.append(slice_ref_seq(sequence, feature.start, feature.end, feature.phase, locus))
+						#print feature.start, feature.end, feature.phase, locus, int(feature.start) - int(locus), int(feature.end) - int(locus) + 1	
+					except IndexError:
+						print 'Cheesy McSneezy'
+				else:
+					print "There was an issue assigning the feature, {0}, to your list. Check ".format(feature)
+		print feats
+
+	try:
+		for i in feats:
+			concat = concat + i 
+	except TypeError:
+		print ''	
+
+	print concat.translate()
+
+def retrieve_gff_records(recordtype, splice_variant):
+	gfflist = []
+
+	for i in records:
+		print i
+		try:
+			if i.type == recordtype and i.attributes['Parent'] == splice_variant:
+				gfflist.append(i)
+		
+		except IndexError:
+			print 'Error in your selection, check your AGI ID, and recordtype'
+	if len(gfflist) == 0:
+		print "No records match the variant or recordtype selected"
+	
+	return gfflist	
+
+
+at4g34000 = 'TGAATCGATTTTTGTTGTCTATTACTGATTGGTTTTCTTGTTCAGATTCACTGATTCGAAGAGAATCATGATTTTTTTTTCCCGCTGAATAATAAGCATATGATTGGGTGTTTTGGAGATTTGTTTACTGATTAAAAGGAGATTCCTTTCCATTTTCACCATTTGCTCTGTTTGACTTCATTGTGCTTATATTTCATTTAGATCTTTTGTTTGGGTTTAGCTTTGGAACTGATAAAAATCTGATTTTGTCTCACGGCTTTGGATTTGGTTCTTAAATTTTGGTACTTTAAAACTGGATAAAGATCAGTGCTTTTTTAGATTCTTCGTTTGTTGATGAATTTATGGATGTATGTATAATTAAACCATAATCTCTCTGCTTGTTTGTTTTCTTATAGGTAAATATCCAGAAGCTTGATCCTCCTAGTTGTACGAAAGCTTGAGTAATGGGGTCTAGATTAAACTTCAAGAGCTTTGTTGATGGTGTGAGTGAGCAGCAGCCAACGGTGGGGACTAGTCTTCCATTGACTAGGCAGAACTCTGTGTTCTCGTTAACCTTTGATGAGTTTCAGAACTCATGGGGTGGTGGAATTGGGAAAGATTTTGGGTCTATGAACATGGATGAGCTCTTGAAGAACATTTGGACTGCAGAGGAAAGTCATTCAATGATGGGAAACAATACCAGTTACACCAACATCAGCAATGGTAATAGTGGAAACACTGTTATTAACGGCGGTGGTAACAACATTGGTGGGTTAGCTGTTGGTGTGGGAGGAGAAAGTGGTGGTTTTTTCACTGGTGGGAGTTTGCAGAGACAAGGTTCACTTACCTTGCCTCGGACGATTAGTCAGAAAAGGGTTGATGATGTCTGGAAGGAGCTGATGAAGGAGGATGACATTGGAAATGGTGTTGTTAATGGTGGGACAAGCGGAATTCCGCAGAGGCAACAAACGCTGGGAGAGATGACTTTGGAGGAGTTTTTGGTCAGGGCTGGTGTGGTTAGGGAAGAACCTCAACCGGTGGAGAGTGTAACTAACTTCAATGGCGGATTCTATGGATTTGGCAGTAATGGAGGTCTTGGGACAGCTAGTAATGGGTTTGTTGCAAACCAACCTCAAGATTTGTCAGGAAATGGAGTAGCGGTGAGACAGGATCTGCTGACTGCTCAAACTCAGCCACTACAGATGCAGCAGCCACAGATGGTGCAGCAGCCACAGATGGTGCAGCAGCCGCAACAACTGATACAGACGCAGGAGAGGCCTTTTCCCAAACAGACCACTATAGCATTTTCCAACACTGTTGATGTGGTTAACCGTTCTCAACCTGCAACACAGGTGACTAAAGAACCTAAGCTACTACATTTTGTAGGAAATACAATCATCTGAAAAATATTAGACGTAGCCTTCATGTTTTAAGATAAGCTGGTTTTGGATATGCATGTATGTTTCAGTTATCTGAGCATGACTTGTTTTTACTTTTTTCGCAGTGCCAGGAAGTGAAGCCTTCAATACTTGGAATTCATAACCATCCTATGAACAACAATCTACTGCAAGCTGTCGATTTTAAAACAGGAGTAACGGTTGCAGCAGTATCTCCTGGAAGCCAGATGTCACCTGATCTGACTCCAAAGAGCGCCCTGGATGCATCTTTGTCCCCTGTTCCTTACATGTTTGGGCGAGTGAGAAAAACAGGTGCAGTTCTGGAGAAAGTGATTGAGAGAAGGCAAAAAAGGATGATAAAGAATAGGGAATCAGCTGCAAGATCCCGCGCTCGCAAGCAAGTGAGTGTTTGTTTAAATTTTGGAGATTAAAGAAACCTTAAAACTGTGACCATGTTATTTACTTTTTCACTTTCTTGCTTGACAGGCTTATACGATGGAACTGGAAGCAGAAATTGCGCAACTCAAAGAATTGAATGAAGAGTTGCAGAAGAAACAAGTGTGTCTCGCTTCTTCCCTATCACAATTAAGAATCTCGAGATTTTCATATTTTCTTGAGGTTGTATTCACTGACCAAATGTTTCATGCAGGTTGAAATCATGGAAAAGCAGAAAAATCAGGTACTGTCTTGATTTGAATATCCTCTATGGTTGTTGGCTAGGCTTTTAACTCTCACTCATAATGAATTACACTTTTGGACAGTATTCTAAGCTTTTGAGTAGAATAGTGTAAGCTATACCATGAAGTGAGACATATCATCACATTTTTGATTTCCCACTCTGCATAAAGTATTTAAGATTTGTGAATATGTTGCAATGCCAATTTGGATATTTCATGAGACTAATCTGACGAGCATGGATTTAACGGAAGTTGGCTCATTTGTTGTTGCAGCTTCTGGAGCCTCTGCGCCAGCCATGGGGAATGGGATGCAAAAGGCAATGCTTGCGAAGGACATTGACGGGTCCCTGGTAGAGCTTATAATGGCGTCTAAGGAACCCAACAAAGCGCCGAAGTTATAGAACAACTCAGAAGATAGAAAGCTAGCTTTGTACGTAGTTTAGGCAGGTTCTGTGGGTGATTGTAAATCTTGAAGTGTGGCGGATTTGACAGAGATAGATAAACACATATCTGTTCTATTTTCCTAAATCTTTTGGTTTTATCTTCCTGATGTAATGGATCTTTATCATTTGTCTTGAACATCTTTGTGACTTAACCAGAGTGAATTTATCTTGTATCTTGTCTGCAATTTTTTCTTT'
+
+
+records = parseGFF3('TAIR10_GFF3_genes_transposons.AIP.gff.gz')
+_join_records('CDS', 'AT4G34000.1', at4g34000, int('16295558'))
+
